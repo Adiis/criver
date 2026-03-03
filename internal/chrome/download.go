@@ -58,9 +58,7 @@ func DownloadAndInstall(version, platform string) error {
 	}
 
 	if err := os.Chmod(dest, 0755); err != nil {
-		if out, serr := exec.Command("sudo", "chmod", "+x", dest).CombinedOutput(); serr != nil {
-			return fmt.Errorf("chmod failed: %s: %w", string(out), err)
-		}
+		return fmt.Errorf("chmod failed (try running with sudo): %w", err)
 	}
 
 	return nil
@@ -115,10 +113,7 @@ func ensureInstallDir() error {
 		return nil
 	}
 	if err := os.MkdirAll(InstallDir, 0755); err != nil {
-		out, serr := exec.Command("sudo", "mkdir", "-p", InstallDir).CombinedOutput()
-		if serr != nil {
-			return fmt.Errorf("creating %s: %s: %w", InstallDir, string(out), serr)
-		}
+		return fmt.Errorf("cannot create %s (try running with sudo): %w", InstallDir, err)
 	}
 	return nil
 }
@@ -128,24 +123,14 @@ func moveFile(src, dst string) error {
 		return nil
 	}
 
+	// Cross-device: copy then remove.
 	input, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
 
 	if err := os.WriteFile(dst, input, 0755); err != nil {
-		tmpDst, terr := os.CreateTemp("", "chromedriver-install-*")
-		if terr != nil {
-			return err
-		}
-		tmpDst.Write(input)
-		tmpDst.Close()
-
-		out, serr := exec.Command("sudo", "cp", tmpDst.Name(), dst).CombinedOutput()
-		os.Remove(tmpDst.Name())
-		if serr != nil {
-			return fmt.Errorf("sudo cp: %s: %w", string(out), serr)
-		}
+		return fmt.Errorf("cannot write to %s (try running with sudo): %w", dst, err)
 	}
 
 	os.Remove(src)
