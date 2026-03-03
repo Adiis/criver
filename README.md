@@ -7,7 +7,14 @@ Criver fetches the latest versions from [Chrome for Testing](https://googlechrom
 ## Install
 
 ```sh
-go install github.com/adiis/criver@latest
+go install github.com/adiis/criver@v0.1.0
+```
+
+Make sure `~/go/bin` is in your PATH:
+
+```sh
+# Add to ~/.zshrc or ~/.bashrc
+export PATH="$HOME/go/bin:$PATH"
 ```
 
 Or build from source:
@@ -21,7 +28,7 @@ go build -o criver .
 ## Usage
 
 ```sh
-./criver
+criver
 ```
 
 This opens an interactive TUI that:
