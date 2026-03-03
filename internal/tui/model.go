@@ -142,6 +142,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state != stateDownloading {
 				return m, tea.Quit
 			}
+		case "/":
+			if m.state == stateList {
+				m.state = stateSearch
+				m.textInput.SetValue("")
+				m.textInput.Focus()
+				return m, m.textInput.Cursor.BlinkCmd()
+			}
 		case "enter":
 			if m.state == stateList {
 				sel := m.list.SelectedItem()
@@ -234,8 +241,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				others = append(others, item)
 			}
 		}
-		items := append(recommended, others...)
+		var items []list.Item
 		items = append(items, searchAction{})
+		items = append(items, recommended...)
+		items = append(items, others...)
 
 		m.list = m.newList(items, "Criver — Select chromedriver version")
 		return m, nil
