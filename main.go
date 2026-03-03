@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/adis/criver/internal/platform"
-	"github.com/adis/criver/internal/tui"
+	"github.com/adiis/criver/internal/platform"
+	"github.com/adiis/criver/internal/tui"
 )
 
 func main() {

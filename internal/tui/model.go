@@ -10,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/adis/criver/internal/browser"
-	"github.com/adis/criver/internal/chrome"
+	"github.com/adiis/criver/internal/browser"
+	"github.com/adiis/criver/internal/chrome"
 )
 
 // TUI states.

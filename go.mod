@@ -1,4 +1,4 @@
-module github.com/adis/criver
+module github.com/adiis/criver
 
 go 1.25.0
 
