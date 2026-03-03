@@ -59,15 +59,6 @@ func DetectInstalled() []Installed {
 				},
 			},
 		}
-	case "windows":
-		candidates = []candidate{
-			{
-				name: "Google Chrome",
-				cmds: [][]string{
-					{"reg", "query", `HKLM\SOFTWARE\Google\Chrome\BLBeacon`, "/v", "version"},
-				},
-			},
-		}
 	}
 
 	for _, c := range candidates {

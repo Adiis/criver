@@ -71,14 +71,9 @@ func extractChromedriver(zipPath, platform string) (string, error) {
 	}
 	defer r.Close()
 
-	binaryName := "chromedriver"
-	if platform == "win32" || platform == "win64" {
-		binaryName = "chromedriver.exe"
-	}
-
 	for _, f := range r.File {
 		name := filepath.Base(f.Name)
-		if name != binaryName {
+		if name != "chromedriver" {
 			continue
 		}
 		if strings.Contains(f.Name, "..") {

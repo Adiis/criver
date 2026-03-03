@@ -50,8 +50,6 @@ This opens an interactive TUI that:
 | macOS | ARM64 | `mac-arm64` |
 | macOS | x86_64 | `mac-x64` |
 | Linux | x86_64 | `linux64` |
-| Windows | x86_64 | `win64` |
-| Windows | x86 | `win32` |
 
 ## Requirements
 
