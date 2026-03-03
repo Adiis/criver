@@ -7,7 +7,7 @@ Criver fetches the latest versions from [Chrome for Testing](https://googlechrom
 ## Install
 
 ```sh
-go install github.com/adis/criver/cmd/criver@latest
+go install github.com/adis/criver@latest
 ```
 
 Or build from source:
@@ -15,7 +15,7 @@ Or build from source:
 ```sh
 git clone https://github.com/adis/criver.git
 cd criver
-go build -o criver ./cmd/criver/
+go build -o criver .
 ```
 
 ## Usage
