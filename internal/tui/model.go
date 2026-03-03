@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -19,6 +20,8 @@ type state int
 const (
 	stateLoading state = iota
 	stateList
+	stateSearch
+	stateSearchResults
 	stateDownloading
 	statePathPrompt
 	stateDone
@@ -26,7 +29,7 @@ const (
 
 // Messages.
 type versionsLoaded struct {
-	versions []string
+	data     chrome.VersionData
 	browsers []browser.Installed
 	err      error
 }
@@ -40,7 +43,7 @@ type pathAppended struct {
 	err    error
 }
 
-// List item.
+// List items.
 type versionItem struct {
 	version     string
 	recommended string
@@ -66,13 +69,20 @@ func (v versionItem) Description() string {
 
 func (v versionItem) FilterValue() string { return v.version }
 
+type searchAction struct{}
+
+func (s searchAction) Title() string       { return "Search for a specific version..." }
+func (s searchAction) Description() string { return "Type a version number to find and install" }
+func (s searchAction) FilterValue() string { return "search" }
+
 // Model is the Bubbletea model for the TUI.
 type Model struct {
 	state       state
 	platform    string
-	versions    []string
+	allVersions []string
 	list        list.Model
 	spinner     spinner.Model
+	textInput   textinput.Model
 	selected    string
 	message     string
 	err         error
@@ -87,10 +97,16 @@ func NewModel(platform string) Model {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	ti := textinput.New()
+	ti.Placeholder = "e.g. 131 or 131.0.6778"
+	ti.CharLimit = 30
+	ti.Width = 40
+
 	return Model{
-		state:    stateLoading,
-		platform: platform,
-		spinner:  s,
+		state:     stateLoading,
+		platform:  platform,
+		spinner:   s,
+		textInput: ti,
 	}
 }
 
@@ -101,8 +117,8 @@ func (m Model) Init() tea.Cmd {
 func fetchVersionsCmd() tea.Cmd {
 	return func() tea.Msg {
 		browsers := browser.DetectInstalled()
-		versions, err := chrome.FetchTopVersions()
-		return versionsLoaded{versions: versions, browsers: browsers, err: err}
+		data, err := chrome.FetchVersions()
+		return versionsLoaded{data: data, browsers: browsers, err: err}
 	}
 }
 
@@ -116,6 +132,11 @@ func downloadCmd(version, platform string) tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Search input state handles its own keys.
+		if m.state == stateSearch {
+			return m.updateSearch(msg)
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.state != stateDownloading {
@@ -123,6 +144,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.state == stateList {
+				sel := m.list.SelectedItem()
+				if _, ok := sel.(searchAction); ok {
+					m.state = stateSearch
+					m.textInput.SetValue("")
+					m.textInput.Focus()
+					return m, m.textInput.Cursor.BlinkCmd()
+				}
+				if item, ok := sel.(versionItem); ok {
+					m.selected = item.version
+					m.state = stateDownloading
+					return m, tea.Batch(m.spinner.Tick, downloadCmd(item.version, m.platform))
+				}
+			}
+			if m.state == stateSearchResults {
 				if item, ok := m.list.SelectedItem().(versionItem); ok {
 					m.selected = item.version
 					m.state = stateDownloading
@@ -168,7 +203,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.windowWidth = msg.Width
-		if m.state == stateList {
+		if m.state == stateList || m.state == stateSearchResults {
 			m.list.SetSize(msg.Width, msg.Height-2)
 		}
 
@@ -179,7 +214,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message = fmt.Sprintf("Error: %v", msg.err)
 			return m, nil
 		}
-		m.versions = msg.versions
+		m.allVersions = msg.data.All
 		m.state = stateList
 
 		browserByMajor := make(map[int]browser.Installed)
@@ -189,7 +224,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		var recommended []list.Item
 		var others []list.Item
-		for _, v := range msg.versions {
+		for _, v := range msg.data.Top {
 			major := chrome.ParseMajor(v)
 			item := versionItem{version: v}
 			if b, ok := browserByMajor[major]; ok {
@@ -200,14 +235,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		items := append(recommended, others...)
+		items = append(items, searchAction{})
 
-		delegate := list.NewDefaultDelegate()
-		l := list.New(items, delegate, 80, 14)
-		l.Title = "Criver — Select chromedriver version"
-		l.SetShowStatusBar(false)
-		l.SetFilteringEnabled(false)
-		l.Styles.Title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-		m.list = l
+		m.list = m.newList(items, "Criver — Select chromedriver version")
 		return m, nil
 
 	case downloadComplete:
@@ -246,7 +276,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	if m.state == stateList {
+	if m.state == stateList || m.state == stateSearchResults {
 		var cmd tea.Cmd
 		m.list, cmd = m.list.Update(msg)
 		return m, cmd
@@ -255,12 +285,75 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		// Go back to main list.
+		m.state = stateList
+		m.textInput.Blur()
+		return m, nil
+	case "enter":
+		query := strings.TrimSpace(m.textInput.Value())
+		if query == "" {
+			return m, nil
+		}
+		matches := chrome.SearchVersions(m.allVersions, query, 20)
+		if len(matches) == 0 {
+			m.message = fmt.Sprintf("No versions found matching \"%s\"", query)
+			m.state = stateDone
+			m.textInput.Blur()
+			return m, nil
+		}
+		items := make([]list.Item, len(matches))
+		for i, v := range matches {
+			items[i] = versionItem{version: v}
+		}
+		m.list = m.newList(items, fmt.Sprintf("Results for \"%s\" — %d found", query, len(matches)))
+		m.state = stateSearchResults
+		m.textInput.Blur()
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) newList(items []list.Item, title string) list.Model {
+	delegate := list.NewDefaultDelegate()
+	height := 14
+	if len(items) > 10 {
+		height = 24
+	}
+	l := list.New(items, delegate, 80, height)
+	l.Title = title
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+	l.Styles.Title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	return l
+}
+
 func (m Model) View() string {
 	switch m.state {
 	case stateLoading:
 		return fmt.Sprintf("\n  %s Fetching chromedriver versions...\n", m.spinner.View())
-	case stateList:
-		return m.list.View()
+	case stateList, stateSearchResults:
+		v := m.list.View()
+		if m.state == stateSearchResults {
+			v += "\n  Press q to quit or esc to go back (via list)."
+		}
+		return v
+	case stateSearch:
+		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Padding(1, 2)
+		inputStyle := lipgloss.NewStyle().Padding(0, 2)
+		hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Padding(1, 2)
+
+		s := titleStyle.Render("Search chromedriver version") + "\n"
+		s += inputStyle.Render(m.textInput.View()) + "\n"
+		s += hintStyle.Render("Enter to search / Esc to go back")
+		return s
 	case stateDownloading:
 		return fmt.Sprintf("\n  %s Downloading chromedriver %s for %s...\n", m.spinner.View(), m.selected, m.platform)
 	case statePathPrompt:

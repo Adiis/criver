@@ -38,29 +38,45 @@ func versionLess(a, b string) bool {
 	return len(pa) < len(pb)
 }
 
-// FetchTopVersions fetches known-good-versions.json and returns the latest
-// patch for each of the top 3 major versions, sorted descending.
-func FetchTopVersions() ([]string, error) {
+// VersionData holds both the top 3 versions and the full list for searching.
+type VersionData struct {
+	Top []string // latest patch per top 3 major versions
+	All []string // every known version, sorted descending
+}
+
+// FetchVersions fetches known-good-versions.json and returns both the top 3
+// major versions and the full version list for searching.
+func FetchVersions() (VersionData, error) {
 	resp, err := http.Get("https://googlechromelabs.github.io/chrome-for-testing/known-good-versions.json")
 	if err != nil {
-		return nil, fmt.Errorf("fetching versions: %w", err)
+		return VersionData{}, fmt.Errorf("fetching versions: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %s", resp.Status)
+		return VersionData{}, fmt.Errorf("unexpected status: %s", resp.Status)
 	}
 
 	var data knownGoodVersions
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("decoding versions: %w", err)
+		return VersionData{}, fmt.Errorf("decoding versions: %w", err)
 	}
 
+	// Collect all versions sorted descending.
+	all := make([]string, len(data.Versions))
+	for i, v := range data.Versions {
+		all[i] = v.Version
+	}
+	sort.Slice(all, func(i, j int) bool {
+		return versionLess(all[j], all[i]) // descending
+	})
+
+	// Top 3 major versions.
 	latest := make(map[int]string)
-	for _, v := range data.Versions {
-		major := ParseMajor(v.Version)
-		if cur, ok := latest[major]; !ok || versionLess(cur, v.Version) {
-			latest[major] = v.Version
+	for _, v := range all {
+		major := ParseMajor(v)
+		if cur, ok := latest[major]; !ok || versionLess(cur, v) {
+			latest[major] = v
 		}
 	}
 
@@ -75,9 +91,25 @@ func FetchTopVersions() ([]string, error) {
 		count = len(majors)
 	}
 
-	result := make([]string, count)
+	top := make([]string, count)
 	for i := 0; i < count; i++ {
-		result[i] = latest[majors[i]]
+		top[i] = latest[majors[i]]
 	}
-	return result, nil
+
+	return VersionData{Top: top, All: all}, nil
+}
+
+// SearchVersions returns versions from the full list that contain the query,
+// limited to maxResults.
+func SearchVersions(all []string, query string, maxResults int) []string {
+	var matches []string
+	for _, v := range all {
+		if strings.Contains(v, query) {
+			matches = append(matches, v)
+			if len(matches) >= maxResults {
+				break
+			}
+		}
+	}
+	return matches
 }

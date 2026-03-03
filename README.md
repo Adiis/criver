@@ -37,7 +37,8 @@ This opens an interactive TUI that:
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Navigate version list |
-| `enter` | Select version / confirm prompt |
+| `enter` | Select version / confirm prompt / search |
+| `esc` | Go back from search |
 | `y` / `n` | Choose yes/no on PATH prompt |
 | `←` / `→` / `tab` | Toggle yes/no |
 | `q` / `ctrl+c` | Quit |
